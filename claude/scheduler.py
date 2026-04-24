@@ -20,6 +20,10 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
+# 统一处理“关闭”语义的辅助函数
+def _is_disabled(val):
+    return str(val).lower() in ["false", "none", "null", ""]
+
 # ============================================================
 # 初始化
 # ============================================================
@@ -112,10 +116,6 @@ def run_task(task_name: str):
     # 用环境变量替换 ${VAR}
     for key, val in os.environ.items():
         prompt = prompt.replace(f"${{{key}}}", val)
-
-    # 统一处理“关闭”语义的辅助函数
-    def _is_disabled(val):
-        return str(val).lower() in ["false", "none", "null", ""]
 
     # 注入数据库连接指令
     db_host_var = task_conf.get("db_host")
@@ -403,8 +403,8 @@ def main():
         
         schedule_expr = task_conf.get("schedule", defaults.get("schedule", "0 9 * * 1-5"))
         
-        # 如果是 manual 则不加入定时任务队列
-        if schedule_expr.lower() == "manual":
+        # 如果是 manual 或 false/none 等禁用标志，则不加入定时任务队列
+        if str(schedule_expr).lower() == "manual" or _is_disabled(schedule_expr):
             logger.info(f"已加载手动任务: {task_name} (不加入定时计划)")
             continue
 

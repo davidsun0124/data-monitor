@@ -1,7 +1,7 @@
 ---
 db_host: EOS_DB_HOST
 schedule: 30 13 * * 1-5
-max_turns: 15
+max_turns: false
 budget: false
 ---
 

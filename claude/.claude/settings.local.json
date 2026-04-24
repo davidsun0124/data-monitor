@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(taskkill:*)"
+    ]
+  }
+}
