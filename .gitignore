@@ -1,12 +1,21 @@
-# Environment variables
-.env
-
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+venv/
+.venv/
 
-# Logs (may contain sensitive data like passwords)
-claude/logs/
-qoderwork/
-scratch/
+# Environment
+.env
+.env.local
+
+# Project Specific
+**/logs/*.log
+**/logs/*.csv
+**/logs/*.json
+summary.csv
+
+# IDE
+.vscode/
+.idea/
+.gemini/

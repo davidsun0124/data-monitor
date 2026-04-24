@@ -415,6 +415,7 @@ def main():
                 CronTrigger(**cron_kwargs), 
                 args=[task_file.name],
                 id=task_name,
+                name=task_name,
                 replace_existing=True
             )
             logger.info(f"已注册定时任务: {task_name} | schedule: {schedule_expr}")
