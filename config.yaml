@@ -1,0 +1,7 @@
+global_defaults:
+  schedule: "0 9 * * 1-5"          # 默认执行时间
+  budget: 0.50                     # 默认单次任务预算 (USD)
+  max_turns: 15                    # 默认 AI 最大思考轮次
+  timeout: 600                     # 默认执行超时时间 (秒)
+  default_db_host: EOS_DB_HOST     # 默认数据库 Host 变量名
+  alert_webhook_env: ALERT_WEBHOOK # 默认告警机器人环境变量名
