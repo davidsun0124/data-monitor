@@ -4,6 +4,11 @@
 所有任务（普通数据监控、Git 仓库类任务）都通过 run_task() 执行。
 外部脚本、AI Agent、Webhook、企微机器人、CI/CD 都调用同一个入口。
 
+架构说明：
+- core/task_runner.py 是框架统一入口
+- claude/scheduler.py 是 Claude 执行器的调度 / CLI 入口
+- qoderwork/ 后续也可以调用 core.task_runner.run_task
+
 职责：
 1. 读取 config.yaml 的 global_defaults
 2. 读取 tasks/{task}.md YAML Frontmatter
@@ -33,14 +38,15 @@ from dotenv import load_dotenv
 # ============================================================
 # 初始化
 # ============================================================
-BASE_DIR = Path(__file__).resolve().parent          # claude/
-ROOT_DIR = BASE_DIR.parent                          # data-monitor/
+CORE_DIR = Path(__file__).resolve().parent          # core/
+ROOT_DIR = CORE_DIR.parent                          # data-monitor/
 load_dotenv(ROOT_DIR / ".env")
 
 with open(ROOT_DIR / "config.yaml") as f:
     CONFIG = yaml.safe_load(f)
 
-LOG_DIR = BASE_DIR / "logs"
+# 日志目录：claude/logs/（执行器相关）
+LOG_DIR = ROOT_DIR / "claude" / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 REPORTS_DIR = LOG_DIR / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
@@ -139,6 +145,7 @@ def merge_config(task_name: str, external_variables: dict = None) -> dict:
         "timeout": defaults.get("timeout", 600),
         "default_db_host": defaults.get("default_db_host", "EOS_DB_HOST"),
         "alert_webhook_env": defaults.get("alert_webhook_env", "ALERT_WEBHOOK"),
+        "executor": defaults.get("executor", "claude"),
     }
 
     # 读取任务 md Frontmatter
@@ -284,13 +291,28 @@ def clone_repo(repo: dict, branch: str, task_name: str, run_id: str) -> dict:
 
 
 # ============================================================
-# 执行任务
+# 执行器适配层
 # ============================================================
-def execute_task_via_claude(prompt: str, conf: dict, run_id: str) -> tuple:
+def run_with_executor(executor: str, prompt: str, conf: dict, run_id: str) -> tuple:
+    """
+    根据执行器类型执行任务
+
+    返回：(exit_code, raw_output, duration)
+    """
+    if executor == "claude":
+        return run_with_claude(prompt, conf, run_id)
+    elif executor == "qoderwork":
+        # TODO: 实现 QoderWork 执行器调用
+        raise NotImplementedError("QoderWork 执行器暂未实现，请使用 executor='claude'")
+    else:
+        raise ValueError(f"未知执行器类型: {executor}")
+
+
+def run_with_claude(prompt: str, conf: dict, run_id: str) -> tuple:
     """
     通过 Claude CLI 执行任务
 
-    返回：(exit_code, raw_output)
+    返回：(exit_code, raw_output, duration)
     """
     budget = conf.get("budget", 0.5)
     max_turns = conf.get("max_turns", 15)
@@ -517,7 +539,7 @@ def send_wecom_notification(task_name: str, run_id: str, conf: dict, final_resul
 
 
 def build_summary_result(task_name: str, run_id: str, trigger_source: str,
-                         status: str, summary_type: str, summary: str,
+                         executor: str, status: str, summary_type: str, summary: str,
                          reason_short: str, details: dict,
                          error_msg: str, error_evidence: dict,
                          repo_results: list = None) -> dict:
@@ -526,6 +548,7 @@ def build_summary_result(task_name: str, run_id: str, trigger_source: str,
         "task": task_name,
         "run_id": run_id,
         "trigger_source": trigger_source,
+        "executor": executor,
         "status": status,
         "type": summary_type,
         "summary": summary,
@@ -547,7 +570,7 @@ def build_summary_result(task_name: str, run_id: str, trigger_source: str,
 # 普通任务执行（无 Git 仓库）
 # ============================================================
 def run_local_task(task_name: str, conf: dict, run_id: str,
-                   trigger_source: str, notify: bool) -> dict:
+                   trigger_source: str, notify: bool, executor: str) -> dict:
     """
     执行普通数据监控任务
 
@@ -555,7 +578,7 @@ def run_local_task(task_name: str, conf: dict, run_id: str,
     1. 读取任务 prompt
     2. 注入数据库连接信息
     3. 注入外部 variables
-    4. 调用 Claude 执行
+    4. 调用执行器执行任务
     5. 解析 SUMMARY_JSON
     6. 写日志
     7. 发送企微通知
@@ -569,6 +592,7 @@ def run_local_task(task_name: str, conf: dict, run_id: str,
             task_name=task_name,
             run_id=run_id,
             trigger_source=trigger_source,
+            executor=executor,
             status="ERROR",
             summary_type="TASK_NOT_FOUND",
             summary="",
@@ -595,7 +619,7 @@ def run_local_task(task_name: str, conf: dict, run_id: str,
             prompt = f"{db_hint}\n\n{prompt}"
 
     # 执行
-    exit_code, raw_output, duration = execute_task_via_claude(prompt, conf, run_id)
+    exit_code, raw_output, duration = run_with_executor(executor, prompt, conf, run_id)
 
     # 解析输出
     cost, tokens, subtype = "N/A", "N/A", "unknown"
@@ -637,6 +661,7 @@ def run_local_task(task_name: str, conf: dict, run_id: str,
         task_name=task_name,
         run_id=run_id,
         trigger_source=trigger_source,
+        executor=executor,
         status=summary_data.get("status", "ERROR"),
         summary_type=summary_data.get("type", "UNKNOWN"),
         summary=summary_data.get("summary", ""),
@@ -660,7 +685,8 @@ def run_local_task(task_name: str, conf: dict, run_id: str,
 def run_git_task(task_name: str, conf: dict, run_id: str,
                  trigger_source: str, notify: bool,
                  specific_repo: str = None,
-                 override_branch: str = None) -> dict:
+                 override_branch: str = None,
+                 executor: str = "claude") -> dict:
     """
     执行 Git 仓库类任务
 
@@ -693,6 +719,7 @@ def run_git_task(task_name: str, conf: dict, run_id: str,
             task_name=task_name,
             run_id=run_id,
             trigger_source=trigger_source,
+            executor=executor,
             status="ERROR",
             summary_type="NO_REPOS",
             summary="",
@@ -770,7 +797,7 @@ def run_git_task(task_name: str, conf: dict, run_id: str,
             prompt = prompt.replace(f"${{{key}}}", val)
 
         # 执行
-        exit_code, raw_output, duration = execute_task_via_claude(prompt, conf, run_id)
+        exit_code, raw_output, duration = run_with_executor(executor, prompt, conf, run_id)
 
         # 解析输出
         try:
@@ -840,6 +867,7 @@ def run_git_task(task_name: str, conf: dict, run_id: str,
         task_name=task_name,
         run_id=run_id,
         trigger_source=trigger_source,
+        executor=executor,
         status=final_status,
         summary_type="DATA_ANOMALY" if final_status != "OK" else "OK",
         summary=f"扫描了 {len(repos_to_scan)} 个仓库，发现 {total_high} HIGH / {total_medium} MEDIUM / {total_low} LOW",
@@ -878,7 +906,8 @@ def run_task(
     branch: str = None,
     variables: dict = None,
     run_id: str = None,
-    notify: bool = True
+    notify: bool = True,
+    executor: str = None
 ) -> dict:
     """
     统一任务执行入口
@@ -891,12 +920,14 @@ def run_task(
         variables: 外部注入变量（优先级最高）
         run_id: 外部传入 run_id（如果不传则自动生成）
         notify: 是否发送企微通知（可被任务配置覆盖）
+        executor: 指定执行器 (claude/qoderwork)，不传则使用任务配置或默认执行器
 
     返回：
         dict {
             "task": str,
             "run_id": str,
             "trigger_source": str,
+            "executor": str,
             "status": str,
             "type": str,
             "summary": str,
@@ -918,6 +949,7 @@ def run_task(
             task_name=task,
             run_id=run_id,
             trigger_source=trigger_source,
+            executor=executor or "claude",
             status="ERROR",
             summary_type="TASK_NOT_FOUND",
             summary="",
@@ -929,6 +961,11 @@ def run_task(
 
     # 合并配置
     conf = merge_config(task, variables)
+
+    # 确定执行器
+    task_executor = conf.get("executor", "claude")
+    if executor is None:
+        executor = task_executor
 
     # 判断任务类型
     target_type = conf.get("target_type", "local")
@@ -942,6 +979,7 @@ def run_task(
             notify=notify,
             specific_repo=repo,
             override_branch=branch,
+            executor=executor,
         )
     else:
         return run_local_task(
@@ -950,6 +988,7 @@ def run_task(
             run_id=run_id,
             trigger_source=trigger_source,
             notify=notify,
+            executor=executor,
         )
 
 

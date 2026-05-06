@@ -5,10 +5,10 @@
 1. 定时调度（解析 cron 表达式，注册 APScheduler 任务）
 2. 解析 CLI 参数
 3. 找到需要执行的 task
-4. 调用 task_runner.run_task 执行
+4. 调用 core.task_runner.run_task 执行
 5. 不再直接执行任务、拼 prompt、调用 Claude、解析 SUMMARY_JSON
 
-所有任务执行逻辑统一由 claude/task_runner.py 的 run_task() 处理。
+所有任务执行逻辑统一由 core.task_runner.run_task() 处理。
 """
 
 import os
@@ -50,6 +50,11 @@ logging.getLogger('apscheduler').setLevel(logging.WARNING)
 # ============================================================
 def _is_disabled(val):
     return str(val).lower() in ["false", "none", "null", ""]
+
+
+def _str_to_bool(val: str) -> bool:
+    """将字符串转换为布尔值"""
+    return str(val).lower() not in ["false", "0", "no", "null", ""]
 
 
 # ============================================================
@@ -104,25 +109,26 @@ def parse_cron(expr: str) -> dict:
 
 
 # ============================================================
-# 导入 task_runner（放在文件末尾避免循环依赖）
+# 主入口
 # ============================================================
 def main():
-    from task_runner import run_task
-
     parser = argparse.ArgumentParser(description="Data Monitor Scheduler")
     parser.add_argument("--task", help="立即运行指定的任务名称 (stem)")
     parser.add_argument("--repo", help="指定要扫描的仓库 ID")
     parser.add_argument("--branch", help="临时覆盖仓库分支")
+    parser.add_argument("--notify", default="true",
+                        help="是否发送企微通知 (true/false，默认 true)")
     args = parser.parse_args()
 
     if args.task:
-        # 手动执行：调用 task_runner.run_task
+        # 手动执行：调用 core.task_runner.run_task
+        from core.task_runner import run_task
         run_task(
             task=args.task,
             trigger_source="manual",
             repo=args.repo,
             branch=args.branch,
-            notify=True,
+            notify=_str_to_bool(args.notify),
         )
         return
 
@@ -150,7 +156,7 @@ def main():
             # 使用 lambda 闭包传递 task_name，避免 APScheduler 序列化问题
             def make_job(task_name):
                 def job():
-                    from task_runner import run_task
+                    from core.task_runner import run_task
                     run_task(task=task_name, trigger_source="schedule", notify=True)
                 return job
 
