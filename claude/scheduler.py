@@ -432,6 +432,7 @@ def run_task(task_name: str, specific_repo: str = None, override_branch: str = N
         total_high = 0
         total_medium = 0
         total_low = 0
+        repo_reports = []
 
         for repo in repos_to_scan:
             r = run_task_for_repo(task_name, task_conf, repo, override_branch, task_timestamp)
@@ -440,12 +441,20 @@ def run_task(task_name: str, specific_repo: str = None, override_branch: str = N
             details = r.get("details", {})
             findings = details.get("findings", [])
             sensitive = details.get("sensitive_info", [])
+            repo_report_path = details.get("report_path")
 
             all_findings.extend(findings)
             all_sensitive_info.extend(sensitive)
             total_high += details.get("high_count", 0)
             total_medium += details.get("medium_count", 0)
             total_low += details.get("low_count", 0)
+
+            if repo_report_path and os.path.exists(repo_report_path):
+                repo_reports.append({
+                    "repo_id": repo["id"],
+                    "repo_name": repo["name"],
+                    "report_path": repo_report_path,
+                })
 
         has_error = any(r.get("status") == "ERROR" for r in repo_results)
         has_warn = any(r.get("status") == "WARN" for r in repo_results)
@@ -480,6 +489,7 @@ def run_task(task_name: str, specific_repo: str = None, override_branch: str = N
                 "report_path": None,
                 "findings": all_findings,
                 "sensitive_info": all_sensitive_info,
+                "repo_reports": repo_reports,
             },
             "error": {"message": error_msg, "evidence": {}} if error_msg else {"message": "", "evidence": {}},
         }
@@ -616,6 +626,7 @@ def send_alert(task_name: str, exit_code: int, subtype: str,
     content = f"【{task_name}】{icon} {head}\n{body}"
 
     try:
+        # 1. 先发送文本消息
         requests.post(
             webhook,
             json={"msgtype": "text", "text": {"content": content}},
@@ -623,11 +634,28 @@ def send_alert(task_name: str, exit_code: int, subtype: str,
         )
         logger.info(f"告警已发送: {task_name} {head}")
 
-        report_path = details.get("report_path")
-        if not report_path:
-            report_path = parse_report_path(result_text, task_name)
-        if report_path and os.path.exists(report_path):
-            upload_report_to_wecom(webhook, report_path, task_name)
+        # 2. 发送各仓库报告（紧跟文本消息之后）
+        repo_reports = details.get("repo_reports", [])
+        if repo_reports:
+            for repo_report in repo_reports:
+                repo_name = repo_report.get("repo_name", repo_report.get("repo_id", ""))
+                repo_report_path = repo_report.get("report_path")
+                if repo_report_path and os.path.exists(repo_report_path):
+                    # 发送仓库报告前先发一条分隔文本
+                    sep_content = f"--- {repo_name} 报告 ---"
+                    requests.post(
+                        webhook,
+                        json={"msgtype": "text", "text": {"content": sep_content}},
+                        timeout=10,
+                    )
+                    upload_report_to_wecom(webhook, repo_report_path, f"{task_name}_{repo_name}")
+        else:
+            # 单报告模式（兼容旧逻辑）
+            report_path = details.get("report_path")
+            if not report_path:
+                report_path = parse_report_path(result_text, task_name)
+            if report_path and os.path.exists(report_path):
+                upload_report_to_wecom(webhook, report_path, task_name)
 
     except Exception as e:
         logger.error(f"告警发送失败: {e}")
