@@ -848,12 +848,13 @@ def run_git_task(task_name: str, conf: dict, run_id: str,
     # 汇总结果
     has_error = any(r.get("status") == "ERROR" for r in repo_results)
     has_warn = any(r.get("status") == "WARN" for r in repo_results)
+    has_interrupted = any(r.get("status") == "INTERRUPTED" for r in repo_results)
 
     if has_error:
         final_status = "ERROR"
     elif has_warn:
         final_status = "WARN"
-    elif interrupted_repos:
+    elif has_interrupted:
         final_status = "INTERRUPTED"
     else:
         final_status = "OK"
@@ -863,13 +864,23 @@ def run_git_task(task_name: str, conf: dict, run_id: str,
     if error_repos:
         error_msg = f"部分仓库扫描中断: {', '.join(r['repo_id'] for r in error_repos)}"
 
+    # 根据状态设置 summary_type
+    if final_status == "INTERRUPTED":
+        summary_type = "CLONE_FAILED"
+    elif final_status == "ERROR":
+        summary_type = "EXECUTION_ERROR"
+    elif final_status == "WARN":
+        summary_type = "DATA_ANOMALY"
+    else:
+        summary_type = "OK"
+
     final_result = build_summary_result(
         task_name=task_name,
         run_id=run_id,
         trigger_source=trigger_source,
         executor=executor,
         status=final_status,
-        summary_type="DATA_ANOMALY" if final_status != "OK" else "OK",
+        summary_type=summary_type,
         summary=f"扫描了 {len(repos_to_scan)} 个仓库，发现 {total_high} HIGH / {total_medium} MEDIUM / {total_low} LOW",
         reason_short=error_msg or f"共 {len(all_findings)} 个安全问题",
         details={
