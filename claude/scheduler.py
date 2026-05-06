@@ -26,6 +26,11 @@ from dotenv import load_dotenv
 # ============================================================
 BASE_DIR = Path(__file__).resolve().parent          # claude/
 ROOT_DIR = BASE_DIR.parent                          # data-monitor/
+
+# 将项目根目录加入 sys.path，以便导入 core 模块
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 load_dotenv(ROOT_DIR / ".env")
 
 with open(ROOT_DIR / "config.yaml") as f:
