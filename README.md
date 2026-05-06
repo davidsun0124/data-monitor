@@ -138,6 +138,11 @@ target_config: repositories.yaml
 
 **敏感信息脱敏**：扫描结果中的密码、密钥、Token 等敏感信息会自动脱敏后才输出。
 
+**报告与告警**：
+- 每个仓库生成独立的 PDF 报告，保存在 `claude/logs/reports/`
+- 报告命名：`owasp-scan_{repo_id}_{YYYYMMDD_HHMMSS}.pdf`
+- 企微消息发送顺序：文本消息 → 各仓库 PDF 报告（紧跟文本消息之后）
+
 ### 执行器 B：QoderWork (`qoderwork/`)
 基于 QoderWork 桌面端执行。适合高性能、纯 SQL 巡检任务。
 
