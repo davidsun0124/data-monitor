@@ -186,3 +186,9 @@ A:
 cd E:/Jasper/My_Projact/eos-sc-monorepo/sc-project/data-monitor/claude
 python scheduler.py
 ```
+
+
+---
+后续迭代:
+1. 创建前端入口,使不同角色的用户都可以通过入口输入自然语言快速新增任务.
+2. 增加OWASP Top 10扫描+敏感信息检测 安全扫描, 并输入安全扫描报告.
