@@ -19,15 +19,20 @@
 .
 ├── claude/              # Claude 执行器目录
 │   ├── scheduler.py     # 异步任务调度中心
+│   ├── scripts/         # 辅助脚本（如报告生成）
 │   └── logs/            # 巡检日志目录
+│       └── reports/     # 安全扫描报告输出目录
 ├── qoderwork/           # QoderWork 执行器目录
 ├── tasks/               # 监控任务定义 (Markdown)
 │   ├── _template.md     # 任务模板
 │   └── *.md             # 具体巡检任务
-├── .env                 # 环境变量 (DB连接、Webhook)
+├── repositories.yaml     # Git 仓库集中配置（安全扫描目标）
+├── .env                 # 环境变量 (DB连接、Webhook、GitLab Token)
+├── .env.example         # 环境变量示例（不包含真实敏感信息）
 ├── config.yaml          # 全局默认配置
 ├── cleanup_logs.py      # 日志自动清理服务
 ├── scratch/             # 临时调试代码目录
+│   └── security-scan/   # 安全扫描临时 checkout 目录
 └── README.md            # 项目文档
 ```
 
@@ -97,6 +102,41 @@ alert_webhook_env: false  # 关闭企微告警（执行完后不发任何消息�
 基于 Claude CLI 执行。适合处理逻辑复杂、需要多步 SQL 关联分析的任务。
 *   **启动方式**：`python claude/scheduler.py`
 *   **手动执行**：`python claude/scheduler.py --task 任务名` (例如: `health_check`)
+*   **扫描指定仓库**：`python claude/scheduler.py --task owasp-scan --repo 仓库ID`
+*   **覆盖分支**：`python claude/scheduler.py --task owasp-scan --repo 仓库ID --branch 分支名`
+
+### 安全扫描任务 (owasp-scan)
+
+OWASP Top 10 安全扫描是任务框架的扩展能力，支持对 Git 仓库执行安全扫描：
+
+**仓库配置** (`repositories.yaml`)：
+```yaml
+repositories:
+  - id: my-repo
+    name: 我的仓库
+    enabled: true
+    provider: gitlab
+    repo_url: https://gitlab.example.com/group/repo.git
+    default_branch: main
+    token_env: GITLAB_TOKEN
+    clone_base: scratch/security-scan
+    tasks:
+      - owasp-scan
+```
+
+**任务配置** (`tasks/owasp-scan.md`)：
+```yaml
+---
+schedule: "0 3 * * 1"      # 每周日凌晨 3 点
+budget: 2.0
+max_turns: 30
+db_host: false             # 不使用数据库
+target_type: git_repositories
+target_config: repositories.yaml
+---
+```
+
+**敏感信息脱敏**：扫描结果中的密码、密钥、Token 等敏感信息会自动脱敏后才输出。
 
 ### 执行器 B：QoderWork (`qoderwork/`)
 基于 QoderWork 桌面端执行。适合高性能、纯 SQL 巡检任务。
@@ -191,4 +231,6 @@ python scheduler.py
 ---
 后续迭代:
 1. 创建前端入口,使不同角色的用户都可以通过入口输入自然语言快速新增任务.
-2. 增加OWASP Top 10扫描+敏感信息检测 安全扫描, 并输入安全扫描报告.
+2. 增加OWASP Top 10扫描+敏感信息检测 安全扫描, 并输入安全扫描报告. ✅
+3. 增加拉取远程仓库代码的能力. ✅
+4. 增加被其他脚本/ai/事件触发/被调用的能力. 

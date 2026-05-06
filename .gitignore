@@ -5,7 +5,7 @@ __pycache__/
 venv/
 .venv/
 
-# Environment
+# Environment (contains sensitive tokens)
 .env
 .env.local
 
@@ -13,7 +13,12 @@ venv/
 **/logs/*.log
 **/logs/*.csv
 **/logs/*.json
+**/logs/reports/*.pdf
+**/logs/reports/*.html
 summary.csv
+
+# Temporary scan directories
+scratch/security-scan/
 
 # IDE
 .vscode/

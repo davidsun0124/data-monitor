@@ -1,0 +1,25 @@
+# 仓库集中管理配置文件
+# 所有需要扫描的 Git 仓库在此注册
+
+repositories:
+  - id: eos-sc-monorepo
+    name: 商仓主仓库
+    enabled: true
+    provider: gitlab
+    repo_url: https://gitlab.example.com/sc/eos-sc-monorepo.git
+    default_branch: main
+    token_env: GITLAB_TOKEN
+    clone_base: scratch/security-scan
+    tasks:
+      - owasp-scan
+
+  - id: erp-api
+    name: ERP API
+    enabled: true
+    provider: gitlab
+    repo_url: https://gitlab.example.com/sc/erp-api.git
+    default_branch: release
+    token_env: GITLAB_TOKEN
+    clone_base: scratch/security-scan
+    tasks:
+      - owasp-scan

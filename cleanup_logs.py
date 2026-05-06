@@ -11,36 +11,71 @@ logger = logging.getLogger("cleanup")
 
 def cleanup_all_logs(keep_days: int = 90):
     """
-    通用日志清理逻辑：
-    遍历项目根目录下所有执行器的 logs 文件夹（例如 claude/logs, qoderwork/logs），
-    删除修改时间超过指定天数的 .log 文件。
+    清理过期文件：
+    1. claude/logs/ 下的 .log（保留 scheduler.log）
+    2. claude/logs/reports/ 下的 .pdf / .html
+    3. scratch/security-scan/ 下的临时 checkout 目录
     """
     root_dir = Path(__file__).resolve().parent
     cutoff = time.time() - keep_days * 86400
     count = 0
-    
-    # 查找所有一级子目录下的 logs 文件夹
+
+    # 1. 清理所有一级子目录下 logs 文件夹的 .log 文件
     for log_dir in root_dir.glob("*/logs"):
         if not log_dir.is_dir():
             continue
-            
+
         logger.info(f"检查日志目录: {log_dir}")
+
         for f in log_dir.glob("*.log"):
-            # 跳过调度器的主日志等常驻文件
             if f.name == "scheduler.log":
                 continue
-                
             if f.stat().st_mtime < cutoff:
                 try:
                     f.unlink()
                     count += 1
                 except Exception as e:
                     logger.error(f"删除失败 {f}: {e}")
-                    
+
+        # 2. 清理 logs/reports/ 下的报告文件
+        reports_dir = log_dir / "reports"
+        if reports_dir.is_dir():
+            for f in reports_dir.glob("*.pdf"):
+                if f.stat().st_mtime < cutoff:
+                    try:
+                        f.unlink()
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"删除失败 {f}: {e}")
+            for f in reports_dir.glob("*.html"):
+                if f.stat().st_mtime < cutoff:
+                    try:
+                        f.unlink()
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"删除失败 {f}: {e}")
+
+    # 3. 清理 scratch/security-scan/ 下的临时 checkout 目录
+    scratch_scan_dir = root_dir / "scratch" / "security-scan"
+    if scratch_scan_dir.is_dir():
+        logger.info(f"检查临时目录: {scratch_scan_dir}")
+        for repo_dir in scratch_scan_dir.iterdir():
+            if not repo_dir.is_dir():
+                continue
+            for scan_dir in repo_dir.iterdir():
+                if scan_dir.name.startswith("owasp-scan_") and scan_dir.is_dir():
+                    if scan_dir.stat().st_mtime < cutoff:
+                        try:
+                            import shutil
+                            shutil.rmtree(scan_dir)
+                            count += 1
+                        except Exception as e:
+                            logger.error(f"删除失败 {scan_dir}: {e}")
+
     if count > 0:
-        logger.info(f"清理完成，共删除了 {count} 个过期日志文件")
+        logger.info(f"清理完成，共删除了 {count} 个过期文件")
     else:
-        logger.info("清理完成，没有需要删除的过期日志")
+        logger.info("清理完成，没有需要删除的过期文件")
 
 if __name__ == "__main__":
     from apscheduler.schedulers.blocking import BlockingScheduler
