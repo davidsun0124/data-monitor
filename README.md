@@ -1,5 +1,7 @@
 # Data Monitor (Zero-Config) ![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)
 
+> **独立性说明**：本项目是独立的 git 仓库，位于 `E:\Jasper\My_Projact\test_agent_skills_worktree\data-monitor`，与同父目录下的其他项目（如 `test_agent_skills`）无直接关联。
+
 极简、自包含的零配置异步数据质量监控框架。
 也许不止适用于数据质量监控，可以扩展到更多场景。
 
